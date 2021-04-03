@@ -1,65 +1,132 @@
-import Head from 'next/head'
-import styles from '../styles/Home.module.css'
+import { Col, Image, Pagination, Row } from "antd";
+import Title from "antd/lib/typography/Title";
+import gql from "graphql-tag";
+import { useRouter } from "next/router";
+import { useEffect } from "react";
+import { useState } from "react";
+import PdLayout from "../components/PdLayout";
+import graphClient from "../services/graphqlClient";
+import { getPokemonCollection } from "../services/pokemonCollection";
 
-export default function Home() {
+export default function Home(results) {
+  const [pokemonState, setPokemonState] = useState(results?.pokemons);
+  const [pokemons, setPokemons] = useState(pokemonState?.results);
+  const [localCollection, setLocalCollection] = useState({});
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const router = useRouter();
+
+  useEffect(() => {
+    setLocalCollection(getPokemonCollection());
+  }, []);
+
+  async function getPokemonOnPage({ page, offset }) {
+    try {
+      const { data } = await graphClient.query({
+        query: gql`
+          query {
+            pokemons(limit: 12, offset: ${(page - 1) * 12}) {
+              count
+              next
+              previous
+              nextOffset
+              prevOffset
+              status
+              message
+              results {
+                id
+                url
+                name
+                image
+              }
+            }
+          }
+        `,
+      });
+      setPokemons(data?.pokemons?.results);
+      setPokemonState(data?.pokemons);
+      setCurrentPage(page);
+    } catch (error) {}
+  }
+
+  function handlePagination(page, pageSize) {
+    getPokemonOnPage({
+      page: page,
+      offset:
+        page < currentPage
+          ? pokemonState?.prevOffset
+          : pokemonState?.nextOffset,
+    });
+  }
+
+  function handlePokemonDetail(name) {
+    router.push(`/detail/${name}`);
+  }
+
   return (
-    <div className={styles.container}>
-      <Head>
-        <title>Create Next App</title>
-        <link rel="icon" href="/favicon.ico" />
-      </Head>
+    <PdLayout>
+      <Row justify='center' align='middle'>
+        <Col xs={23} style={{ paddingTop: 10 }}>
+          <Title level={3} style={{ textAlign: "center" }}>
+            {Object.entries(localCollection).length} / {pokemonState?.count}
+          </Title>
+        </Col>
+        {pokemons.map((pokemon) => (
+          <Col
+            key={pokemon.id}
+            xs={24 / 3}
+            lg={24 / 6}
+            style={{ textAlign: "center" }}
+            onClick={handlePokemonDetail.bind(this, pokemon.name)}>
+            <Image src={pokemon?.image} preview={false} />
+            <Title level={5} ellipsis>
+              {pokemon?.name}
+            </Title>
+          </Col>
+        ))}
+      </Row>
+      <Row align='middle' justify='center' style={{ marginTop: 40 }}>
+        <Col>
+          <Pagination
+            current={currentPage}
+            defaultPageSize={12}
+            pageSizeOptions={[""]}
+            showLessItems
+            total={pokemonState?.count}
+            onChange={handlePagination}
+          />
+        </Col>
+      </Row>
+    </PdLayout>
+  );
+}
 
-      <main className={styles.main}>
-        <h1 className={styles.title}>
-          Welcome to <a href="https://nextjs.org">Next.js!</a>
-        </h1>
+export async function getStaticProps() {
+  const { data } = await graphClient.query({
+    query: gql`
+      query {
+        pokemons(limit: 12, offset: 0) {
+          count
+          next
+          previous
+          nextOffset
+          prevOffset
+          status
+          message
+          results {
+            id
+            url
+            name
+            image
+          }
+        }
+      }
+    `,
+  });
 
-        <p className={styles.description}>
-          Get started by editing{' '}
-          <code className={styles.code}>pages/index.js</code>
-        </p>
-
-        <div className={styles.grid}>
-          <a href="https://nextjs.org/docs" className={styles.card}>
-            <h3>Documentation &rarr;</h3>
-            <p>Find in-depth information about Next.js features and API.</p>
-          </a>
-
-          <a href="https://nextjs.org/learn" className={styles.card}>
-            <h3>Learn &rarr;</h3>
-            <p>Learn about Next.js in an interactive course with quizzes!</p>
-          </a>
-
-          <a
-            href="https://github.com/vercel/next.js/tree/master/examples"
-            className={styles.card}
-          >
-            <h3>Examples &rarr;</h3>
-            <p>Discover and deploy boilerplate example Next.js projects.</p>
-          </a>
-
-          <a
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-            className={styles.card}
-          >
-            <h3>Deploy &rarr;</h3>
-            <p>
-              Instantly deploy your Next.js site to a public URL with Vercel.
-            </p>
-          </a>
-        </div>
-      </main>
-
-      <footer className={styles.footer}>
-        <a
-          href="https://vercel.com?utm_source=create-next-app&utm_medium=default-template&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Powered by{' '}
-          <img src="/vercel.svg" alt="Vercel Logo" className={styles.logo} />
-        </a>
-      </footer>
-    </div>
-  )
+  return {
+    props: {
+      pokemons: data?.pokemons,
+    },
+  };
 }
